@@ -1,4 +1,7 @@
-/* Copyright (c) 2019-2020, Michael Santos <michael.santos@gmail.com>
+/* Copyright (c) 2023, Michael R. Johnson <michael@johnson.gg>
+ *
+ * Per the below license, this is a modification of a work authored
+ * by Michael Santos <michael.santos@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -20,7 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "keepalive.h"
+#include "dscp.h"
 
 void _init(void);
 int (*sys_listen)(int sockfd, int backlog);
@@ -28,49 +31,25 @@ int (*sys_listen)(int sockfd, int backlog);
 int listen(int sockfd, int backlog);
 #pragma GCC diagnostic warning "-Wpedantic"
 
-keepalive_t opt = {0};
+dscp_t opt = {0};
 
-void _init(void) {
+void _init(void)
+{
   const char *err;
 
   char *env_debug;
-  char *env_tcp_keepidle;
-  char *env_tcp_keepcnt;
-  char *env_tcp_keepintvl;
-  char *env_tcp_user_timeout;
-  char *env_tcp_defer_accept;
+  char *env_dscp_class;
 
-  env_debug = getenv("LIBKEEPALIVE_DEBUG");
-  env_tcp_keepidle = getenv("TCP_KEEPIDLE");
-  env_tcp_keepcnt = getenv("TCP_KEEPCNT");
-  env_tcp_keepintvl = getenv("TCP_KEEPINTVL");
-  env_tcp_user_timeout = getenv("TCP_USER_TIMEOUT");
-  env_tcp_defer_accept = getenv("TCP_DEFER_ACCEPT");
+  env_debug = getenv("LIBDSCP_DEBUG");
+  env_dscp_class = getenv("LIBDSCP_CLASS");
 
-  keepalive_init(&opt);
+  dscp_init(&opt);
 
   if (env_debug)
     opt.debug = 1;
 
-  if (env_tcp_keepidle)
-    opt.tcp_keepidle = atoi(env_tcp_keepidle);
-
-  if (env_tcp_keepcnt)
-    opt.tcp_keepidle = atoi(env_tcp_keepcnt);
-
-  if (env_tcp_keepintvl)
-    opt.tcp_keepintvl = atoi(env_tcp_keepintvl);
-
-  if (env_tcp_user_timeout)
-    opt.tcp_user_timeout = atoi(env_tcp_user_timeout);
-
-  if (env_tcp_defer_accept)
-    opt.tcp_defer_accept = atoi(env_tcp_defer_accept);
-
-  /* TCP_KEEPIDLE + TCP_KEEPINTVL * TCP_KEEPCNT */
-  if (opt.tcp_user_timeout < 0)
-    opt.tcp_user_timeout =
-        opt.tcp_keepidle + opt.tcp_keepintvl * opt.tcp_keepcnt * 1000;
+  if (env_dscp_class)
+    opt.ip_dscp = atoi(env_dscp_class);
 
 #pragma GCC diagnostic ignored "-Wpedantic"
   sys_listen = dlsym(RTLD_NEXT, "listen");
@@ -78,13 +57,14 @@ void _init(void) {
   err = dlerror();
 
   if (err != NULL)
-    (void)fprintf(stderr, "libkeepalive:dlsym (listen): %s\n", err);
+    (void)fprintf(stderr, "libdscp:dlsym (listen): %s\n", err);
 }
 
-int listen(int sockfd, int backlog) {
+int listen(int sockfd, int backlog)
+{
   int oerrno = errno;
 
-  (void)keepalive(sockfd, &opt);
+  (void)apply_dscp_opts(sockfd, &opt);
   errno = oerrno;
   return sys_listen(sockfd, backlog);
 }

@@ -1,4 +1,7 @@
-/* Copyright (c) 2019-2020, Michael Santos <michael.santos@gmail.com>
+/* Copyright (c) 2023, Michael R. Johnson <michael@johnson.gg>
+ *
+ * Per the below license, this is a modification of a work authored
+ * by Michael Santos <michael.santos@gmail.com>.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -12,24 +15,33 @@
  * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
-#include <stdio.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <errno.h>
+#include "dscp.h"
 
-#include <netinet/in.h>
-#include <netinet/tcp.h>
+void dscp_init(dscp_t *opt)
+{
+  opt->debug = 0;
+  opt->ip_dscp = 0;
+}
 
-typedef struct {
-  int debug;
-  int tcp_keepidle;
-  int tcp_keepcnt;
-  int tcp_keepintvl;
-  int tcp_user_timeout;
-  int tcp_syncnt;
-  int tcp_defer_accept;
-} keepalive_t;
+int apply_dscp_opts(int sockfd, dscp_t *opt)
+{
+  if (opt->ip_dscp > 0)
+  {
+    int tos = dscp_to_tos(opt->ip_dscp);
 
-void keepalive_init(keepalive_t *opt);
-int keepalive(int sockfd, keepalive_t *opt);
+    if (setsockopt(sockfd, IPPROTO_IP, IP_TOS, &tos,
+                   sizeof(tos)) < 0)
+    {
+      if (opt->debug)
+        (void)fprintf(stderr, "libdscp:setsockopt(IP_TOS, %d): %s\n",
+                      opt->ip_dscp, strerror(errno));
+    }
+  }
+
+  return 0;
+}
+
+int dscp_to_tos(int dscp)
+{
+  return (dscp << 2);
+}

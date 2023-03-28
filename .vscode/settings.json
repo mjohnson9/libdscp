@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "features.h": "c",
+        "keepalive.h": "c",
+        "stdio.h": "c",
+        "string.h": "c"
+    }
+}
