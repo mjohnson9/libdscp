@@ -11,6 +11,10 @@ all: libdscp.so libdscp_listen.so
 	 	-o $@ $^ -ldl \
 	 	-Wl,-z,relro,-z,now -Wl,-z,noexecstack
 
+install: all
+	install libdscp.so /usr/lib/libdscp.so
+	install libdscp_listen.so /usr/lib/libdscp_listen.so
+
 clean:
 	-@rm libdscp.so libdscp_listen.so
 
