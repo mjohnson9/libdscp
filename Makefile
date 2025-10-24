@@ -12,10 +12,12 @@ all: libdscp.so libdscp_listen.so
 	 	-Wl,-z,relro,-z,now -Wl,-z,noexecstack
 
 install: all
-	install -D libdscp.so libdscp_listen.so usr/lib/
+	install -D libdscp.so usr/lib/libdscp.so
+	install -D libdscp_listen.so usr/lib/libdscp_listen.so
 
 clean:
-	-@rm libdscp.so libdscp_listen.so
+	-@rm libdscp.so libdscp_listen.so usr/lib/libdscp.so usr/lib/libdscp_listen.so
+	-@rmdir usr/lib usr
 
 test:
 	@bats test
