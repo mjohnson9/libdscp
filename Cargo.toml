@@ -1,0 +1,13 @@
+[package]
+name = "libdscp"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "dscp"
+crate-type = ["cdylib"]
+
+[dependencies]
+ctor = "1.0.13"
+errno = "0.3.14"
+libc = "0.2.189"
