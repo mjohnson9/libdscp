@@ -9,24 +9,17 @@ use std::sync::LazyLock;
 #[unsafe(no_mangle)]
 pub extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int {
     apply_dscp(socket, *DSCP_CLASS);
-    println!(
-        "libdscp: moved connection {} to DSCP class {}",
-        socket, *DSCP_CLASS
-    );
     unsafe { ORIGINAL_CONNECT.unwrap()(socket, address, len) }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn listen(socket: c_int, backlog: c_int) -> c_int {
     apply_dscp(socket, *DSCP_CLASS);
-    println!(
-        "libdscp: moved listener {} to DSCP class {}",
-        socket, *DSCP_CLASS
-    );
     unsafe { ORIGINAL_LISTEN.unwrap()(socket, backlog) }
 }
 
 static DSCP_CLASS: LazyLock<u8> = LazyLock::new(|| get_dscp_class());
+static IS_DEBUG: LazyLock<bool> = LazyLock::new(|| get_debug());
 static mut ORIGINAL_CONNECT: Option<
     unsafe fn(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int,
 > = None;
@@ -59,6 +52,11 @@ fn apply_dscp(socket: c_int, dscp: u8) {
             socket,
             errno::errno(),
         );
+    } else if *IS_DEBUG {
+        println!(
+            "libdscp: moved socket {} to DSCP class {}",
+            socket, *DSCP_CLASS
+        );
     }
 }
 
@@ -70,6 +68,13 @@ fn get_dscp_class() -> u8 {
     env::var("LIBDSCP_CLASS")
         .map_or_else(|_| Some(0), |var| var.parse::<u8>().ok())
         .unwrap_or_default()
+}
+
+fn get_debug() -> bool {
+    let debug_int = env::var("LIBDSCP_DEBUG")
+        .map_or_else(|_| Some(0), |var| var.parse::<i32>().ok())
+        .unwrap_or_default();
+    debug_int != 0
 }
 
 fn dlsym_next(symbol: &'static str) -> *const usize {
