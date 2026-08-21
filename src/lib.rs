@@ -18,8 +18,8 @@ pub extern "C" fn listen(socket: c_int, backlog: c_int) -> c_int {
     unsafe { ORIGINAL_LISTEN.unwrap()(socket, backlog) }
 }
 
-static DSCP_CLASS: LazyLock<u8> = LazyLock::new(|| get_dscp_class());
-static IS_DEBUG: LazyLock<bool> = LazyLock::new(|| get_debug());
+static DSCP_CLASS: LazyLock<u8> = LazyLock::new(get_dscp_class);
+static IS_DEBUG: LazyLock<bool> = LazyLock::new(get_debug);
 static mut ORIGINAL_CONNECT: Option<
     unsafe fn(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int,
 > = None;
@@ -36,16 +36,15 @@ fn init_lib() {
 fn apply_dscp(socket: c_int, dscp: u8) {
     let tos = dscp_to_tos(dscp);
     let tos = c_int::from(tos);
-    let socket_res: i32;
-    unsafe {
-        socket_res = setsockopt(
+    let socket_res = unsafe {
+        setsockopt(
             socket,
             IPPROTO_IP,
             IP_TOS,
             &tos as *const c_int as *const c_void,
             std::mem::size_of::<c_int>() as socklen_t,
-        );
-    }
+        )
+    };
     if socket_res < 0 {
         eprintln!(
             "libdscp: failed to set DSCP for socket {}: {}",
