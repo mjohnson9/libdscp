@@ -47,13 +47,13 @@ fn apply_dscp(socket: c_int, dscp: u8) {
         );
     }
     if socket_res < 0 {
-        println!(
+        eprintln!(
             "libdscp: failed to set DSCP for socket {}: {}",
             socket,
             errno::errno(),
         );
     } else if *IS_DEBUG {
-        println!(
+        eprintln!(
             "libdscp: moved socket {} to DSCP class {}",
             socket, *DSCP_CLASS
         );
