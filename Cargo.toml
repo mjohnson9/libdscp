@@ -1,6 +1,6 @@
 [package]
 name = "libdscp"
-version = "26.08.21"
+version = "26.8.21"
 edition = "2024"
 
 [lib]
