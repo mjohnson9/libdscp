@@ -1,46 +1,73 @@
 use ctor::ctor;
 use libc::{
-    IP_TOS, IPPROTO_IP, RTLD_NEXT, c_char, c_int, c_void, dlerror, dlsym, setsockopt, sockaddr,
-    socklen_t,
+    AF_INET, AF_INET6, IP_TOS, IPPROTO_IP, IPPROTO_IPV6, IPV6_TCLASS, RTLD_NEXT, SO_DOMAIN,
+    SOL_SOCKET, c_char, c_int, c_void, dlerror, dlsym, getsockopt, setsockopt, sockaddr, socklen_t,
 };
 use std::env;
+use std::ffi::CStr;
 use std::sync::LazyLock;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int {
     apply_dscp(socket, *DSCP_CLASS);
-    unsafe { ORIGINAL_CONNECT.unwrap()(socket, address, len) }
+    unsafe { (*ORIGINAL_CONNECT)(socket, address, len) }
 }
 
 #[unsafe(no_mangle)]
 pub extern "C" fn listen(socket: c_int, backlog: c_int) -> c_int {
     apply_dscp(socket, *DSCP_CLASS);
-    unsafe { ORIGINAL_LISTEN.unwrap()(socket, backlog) }
+    unsafe { (*ORIGINAL_LISTEN)(socket, backlog) }
 }
 
 static DSCP_CLASS: LazyLock<u8> = LazyLock::new(get_dscp_class);
 static IS_DEBUG: LazyLock<bool> = LazyLock::new(get_debug);
-static mut ORIGINAL_CONNECT: Option<
-    unsafe fn(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int,
-> = None;
-static mut ORIGINAL_LISTEN: Option<unsafe fn(socket: c_int, backlog: c_int) -> c_int> = None;
+static ORIGINAL_CONNECT: LazyLock<
+    unsafe extern "C" fn(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int,
+> = LazyLock::new(|| unsafe { std::mem::transmute(dlsym_next(c"connect")) });
+static ORIGINAL_LISTEN: LazyLock<unsafe extern "C" fn(socket: c_int, backlog: c_int) -> c_int> =
+    LazyLock::new(|| unsafe { std::mem::transmute(dlsym_next(c"listen")) });
 
 #[ctor(unsafe)]
 fn init_lib() {
-    unsafe {
-        ORIGINAL_CONNECT = Some(std::mem::transmute(dlsym_next("connect\0")));
-        ORIGINAL_LISTEN = Some(std::mem::transmute(dlsym_next("listen\0")));
-    }
+    // Preload all of the LazyLocks
+    let _ = *DSCP_CLASS;
+    let _ = *IS_DEBUG;
+    let _ = *ORIGINAL_CONNECT;
+    let _ = *ORIGINAL_LISTEN;
 }
 
 fn apply_dscp(socket: c_int, dscp: u8) {
     let tos = dscp_to_tos(dscp);
     let tos = c_int::from(tos);
+
+    let (res, socket_family) = get_socket_family(socket);
+    if res < 0 {
+        if *IS_DEBUG {
+            eprintln!(
+                "libdscp: failed to get socket type for socket {}: {}",
+                socket,
+                errno::errno(),
+            );
+        }
+        return;
+    }
+
+    let (level, optname) = match socket_family {
+        AF_INET => (IPPROTO_IP, IP_TOS),
+        AF_INET6 => (IPPROTO_IPV6, IPV6_TCLASS),
+        _ => {
+            if *IS_DEBUG {
+                eprintln!("libdscp: socket {} is not IPv4/IPv6, skipping", socket);
+            }
+            return;
+        }
+    };
+
     let socket_res = unsafe {
         setsockopt(
             socket,
-            IPPROTO_IP,
-            IP_TOS,
+            level,
+            optname,
             &tos as *const c_int as *const c_void,
             std::mem::size_of::<c_int>() as socklen_t,
         )
@@ -59,38 +86,55 @@ fn apply_dscp(socket: c_int, dscp: u8) {
     }
 }
 
+fn get_socket_family(socket: c_int) -> (c_int, c_int) {
+    let mut family: c_int = 0;
+    let mut len: socklen_t = std::mem::size_of::<c_int>().try_into().unwrap();
+    let res = unsafe {
+        getsockopt(
+            socket,
+            SOL_SOCKET,
+            SO_DOMAIN,
+            &mut family as *mut c_int as *mut c_void,
+            &mut len as *mut socklen_t,
+        )
+    };
+    (res, family)
+}
+
 fn dscp_to_tos(dscp: u8) -> u8 {
     dscp << 2
 }
 
 fn get_dscp_class() -> u8 {
     env::var("LIBDSCP_CLASS")
-        .map_or_else(|_| Some(0), |var| var.parse::<u8>().ok())
-        .unwrap_or_default()
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0)
 }
 
 fn get_debug() -> bool {
     let debug_int = env::var("LIBDSCP_DEBUG")
-        .map_or_else(|_| Some(0), |var| var.parse::<i32>().ok())
-        .unwrap_or_default();
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
     debug_int != 0
 }
 
-fn dlsym_next(symbol: &'static str) -> *const usize {
+fn dlsym_next(symbol: &'static CStr) -> *const usize {
     unsafe {
         let ptr = dlsym(RTLD_NEXT, symbol.as_ptr() as *const c_char);
         if ptr.is_null() {
             let err = dlerror();
             if err.is_null() {
                 panic!(
-                    "libdscp: unable to find underlying function for {}: [NO ERROR PRESENT]",
+                    "libdscp: unable to find underlying function for {:?}: [NO ERROR PRESENT]",
                     symbol
                 )
             }
 
             let err = std::ffi::CStr::from_ptr(err).to_string_lossy().to_string();
             panic!(
-                "libdscp: unable to find underlying function for {}: {}",
+                "libdscp: unable to find underlying function for {:?}: {}",
                 symbol, err
             );
         }
