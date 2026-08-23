@@ -8,13 +8,13 @@ use std::ffi::CStr;
 use std::sync::LazyLock;
 
 #[unsafe(no_mangle)]
-pub extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int {
+pub unsafe extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int {
     apply_dscp(socket, *DSCP_CLASS);
     unsafe { (*ORIGINAL_CONNECT)(socket, address, len) }
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn listen(socket: c_int, backlog: c_int) -> c_int {
+pub unsafe extern "C" fn listen(socket: c_int, backlog: c_int) -> c_int {
     apply_dscp(socket, *DSCP_CLASS);
     unsafe { (*ORIGINAL_LISTEN)(socket, backlog) }
 }
