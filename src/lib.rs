@@ -40,8 +40,8 @@ fn apply_dscp(socket: c_int, dscp: u8) {
     let tos = dscp_to_tos(dscp);
     let tos = c_int::from(tos);
 
-    let (res, socket_family) = get_socket_family(socket);
-    if res < 0 {
+    let socket_family = get_socket_family(socket);
+    if socket_family.is_err() {
         if *IS_DEBUG {
             eprintln!(
                 "libdscp: failed to get socket type for socket {}: {}",
@@ -53,8 +53,8 @@ fn apply_dscp(socket: c_int, dscp: u8) {
     }
 
     let (level, optname) = match socket_family {
-        AF_INET => (IPPROTO_IP, IP_TOS),
-        AF_INET6 => (IPPROTO_IPV6, IPV6_TCLASS),
+        Ok(AF_INET) => (IPPROTO_IP, IP_TOS),
+        Ok(AF_INET6) => (IPPROTO_IPV6, IPV6_TCLASS),
         _ => {
             if *IS_DEBUG {
                 eprintln!("libdscp: socket {} is not IPv4/IPv6, skipping", socket);
@@ -86,7 +86,7 @@ fn apply_dscp(socket: c_int, dscp: u8) {
     }
 }
 
-fn get_socket_family(socket: c_int) -> (c_int, c_int) {
+fn get_socket_family(socket: c_int) -> Result<c_int, c_int> {
     let mut family: c_int = 0;
     let mut len: socklen_t = std::mem::size_of::<c_int>().try_into().unwrap();
     let res = unsafe {
@@ -98,7 +98,10 @@ fn get_socket_family(socket: c_int) -> (c_int, c_int) {
             &mut len as *mut socklen_t,
         )
     };
-    (res, family)
+    if res < 0 {
+        return Err(res);
+    }
+    Ok(family)
 }
 
 fn dscp_to_tos(dscp: u8) -> u8 {
