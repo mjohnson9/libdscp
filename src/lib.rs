@@ -115,7 +115,7 @@ fn get_socket_family(socket: c_int) -> Result<c_int, c_int> {
 }
 
 fn dscp_to_tos(dscp: u8) -> u8 {
-    dscp << 2
+    (dscp & 0b111111) << 2
 }
 
 fn get_dscp_class() -> u8 {
