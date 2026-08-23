@@ -2,17 +2,9 @@
 
 ## SYNOPSIS
 
-### client only
+### basic use
 
-LD\_PRELOAD=libdscp.so *COMMAND* *ARG* *...*
-
-### server only
-
-LD\_PRELOAD=libdscp_listen.so *COMMAND* *ARG* *...*
-
-### client and server
-
-LD\_PRELOAD=libdscp.so:libdscp_listen.so *COMMAND* *ARG* *...*
+`LIBDSCP_CLASS=8 LD_PRELOAD=libdscp.so COMMAND ARG ...`
 
 ## DESCRIPTION
 
@@ -20,13 +12,11 @@ libdscp: set IP DSCP options
 
 libdscp is a small library for setting priority-related socket options.
 
-`libdscp` works by intercepting calls to `connect(2)` using `LD_PRELOAD`. Before `connect(2)`ing, `setsockopt(2)` is called using the configured socket options.
-
-`libdscp_listen` works by intercepting calls to `listen(2)` using `LD_PRELOAD`. Socket options are set when the application calls `listen(2)`. Socket options for `accept`(2)'ed fd's are inherited from the listener socket.
+`libdscp` works by intercepting calls to `connect(2)` and `listen(2)` using `LD_PRELOAD`. Before `connect(2)`ing, `setsockopt(2)` is called using the configured socket options.
 
 libdscp requires the program to be dynamically linked and will not work with statically linked programs or programs that directly make syscalls.
 
-libdscp is a small LD_PRELOAD library to set the IP DSCP header on any sockets opened by dynamically linked applications, either outbound (connect(2), using libdscp.so) or inbound (listen(2), using libdscp_listen.so).
+libdscp is a small LD_PRELOAD library to set the IP DSCP header on any sockets opened by dynamically linked applications, on outbound (connect(2)) and inbound (listen(2)).
 
 The typical situation is that one wants to set the IP priority for an application, but the application does not provide this as an option.
 
@@ -58,7 +48,7 @@ Setting options to 0 will use the system default.
 
 ## ALTERNATIVES
 
-I am not aware of any alternatives.I will list any alternatives here as I become aware of them. If you have created or know of an alternative, please create an issue on this repository or send an email to the address in the LICENSE file.
+I am not aware of any alternatives. I will list any alternatives here as I become aware of them. If you have created or know of an alternative, please create an issue on this repository or send an email to the address in the LICENSE file.
 
 ## SEE ALSO
 
