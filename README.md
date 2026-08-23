@@ -27,7 +27,7 @@ Setting options to 0 will use the system default.
 ### COMMON VARIABLES
 
 `LIBDSCP_DEBUG`
-: Write errors to stdout (default: disabled). Set to any value to enable.
+: Write debug messages to stdout (default: disabled). Set to any numeric value other than 0 to enable.
 
     LIBDSCP_DEBUG=1
 
