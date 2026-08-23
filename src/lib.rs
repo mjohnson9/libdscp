@@ -7,12 +7,22 @@ use std::env;
 use std::ffi::CStr;
 use std::sync::LazyLock;
 
+/// Passthrough a connection attempt to the libc `connect`. See `connect(2)` documentation for more information.
+///
+/// # Safety
+///
+/// - This function is `unsafe` because it is a wrapper around a libc function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn connect(socket: c_int, address: *const sockaddr, len: socklen_t) -> c_int {
     apply_dscp(socket, *DSCP_CLASS);
     unsafe { (*ORIGINAL_CONNECT)(socket, address, len) }
 }
 
+/// Passthrough a listener to the libc `listen`. See `listen(2)` documentation for more information.
+///
+/// # Safety
+///
+/// - This function is `unsafe` because it is a wrapper around a libc function.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn listen(socket: c_int, backlog: c_int) -> c_int {
     apply_dscp(socket, *DSCP_CLASS);
