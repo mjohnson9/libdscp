@@ -51,12 +51,11 @@ fn apply_dscp(socket: c_int, dscp: u8) {
     let tos = c_int::from(tos);
 
     let socket_family = get_socket_family(socket);
-    if socket_family.is_err() {
+    if let Err(socket_family_error) = socket_family {
         if *IS_DEBUG {
             eprintln!(
                 "libdscp: failed to get socket type for socket {}: {}",
-                socket,
-                errno::errno(),
+                socket, socket_family_error,
             );
         }
         return;
@@ -96,7 +95,7 @@ fn apply_dscp(socket: c_int, dscp: u8) {
     }
 }
 
-fn get_socket_family(socket: c_int) -> Result<c_int, c_int> {
+fn get_socket_family(socket: c_int) -> Result<c_int, errno::Errno> {
     let mut family: c_int = 0;
     let mut len: socklen_t = std::mem::size_of::<c_int>().try_into().unwrap();
     let res = unsafe {
@@ -109,7 +108,7 @@ fn get_socket_family(socket: c_int) -> Result<c_int, c_int> {
         )
     };
     if res < 0 {
-        return Err(res);
+        return Err(errno::errno());
     }
     Ok(family)
 }
