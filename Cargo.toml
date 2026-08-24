@@ -9,5 +9,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ctor = "1.0.13"
-errno = "0.3.14"
 libc = "0.2.189"

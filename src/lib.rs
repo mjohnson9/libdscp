@@ -40,28 +40,22 @@ static ORIGINAL_LISTEN: LazyLock<unsafe extern "C" fn(socket: c_int, backlog: c_
 #[ctor(unsafe)]
 fn init_lib() {
     // Preload all of the LazyLocks
-    let _ = *DSCP_CLASS;
     let _ = *IS_DEBUG;
+    let _ = *DSCP_CLASS;
     let _ = *ORIGINAL_CONNECT;
     let _ = *ORIGINAL_LISTEN;
 }
 
 fn apply_dscp(socket: c_int, dscp: u8) {
-    let tos = dscp_to_tos(dscp);
-    let tos = c_int::from(tos);
-
     let socket_family = get_socket_family(socket);
-    if let Err(socket_family_error) = socket_family {
-        if *IS_DEBUG {
+    let (level, optname) = match socket_family {
+        Err(socket_family_error) => {
             eprintln!(
                 "libdscp: failed to get socket type for socket {}: {}",
                 socket, socket_family_error,
             );
+            return;
         }
-        return;
-    }
-
-    let (level, optname) = match socket_family {
         Ok(AF_INET) => (IPPROTO_IP, IP_TOS),
         Ok(AF_INET6) => (IPPROTO_IPV6, IPV6_TCLASS),
         _ => {
@@ -72,12 +66,24 @@ fn apply_dscp(socket: c_int, dscp: u8) {
         }
     };
 
+    let old_tos = get_socket_tos(socket, level, optname);
+    if let Err(tos_error) = old_tos {
+        eprintln!(
+            "libdscp: failed to get socket TOS/TCLASS for socket {}: {}",
+            socket, tos_error,
+        );
+        return;
+    }
+
+    let new_tos = dscp_to_tos(old_tos.unwrap().try_into().unwrap_or_default(), dscp);
+    let new_tos = c_int::from(new_tos);
+
     let socket_res = unsafe {
         setsockopt(
             socket,
             level,
             optname,
-            &tos as *const c_int as *const c_void,
+            &new_tos as *const c_int as *const c_void,
             std::mem::size_of::<c_int>() as socklen_t,
         )
     };
@@ -85,7 +91,7 @@ fn apply_dscp(socket: c_int, dscp: u8) {
         eprintln!(
             "libdscp: failed to set DSCP for socket {}: {}",
             socket,
-            errno::errno(),
+            std::io::Error::last_os_error(),
         );
     } else if *IS_DEBUG {
         eprintln!(
@@ -95,7 +101,7 @@ fn apply_dscp(socket: c_int, dscp: u8) {
     }
 }
 
-fn get_socket_family(socket: c_int) -> Result<c_int, errno::Errno> {
+fn get_socket_family(socket: c_int) -> Result<c_int, std::io::Error> {
     let mut family: c_int = 0;
     let mut len: socklen_t = std::mem::size_of::<c_int>().try_into().unwrap();
     let res = unsafe {
@@ -108,20 +114,61 @@ fn get_socket_family(socket: c_int) -> Result<c_int, errno::Errno> {
         )
     };
     if res < 0 {
-        return Err(errno::errno());
+        return Err(std::io::Error::last_os_error());
     }
     Ok(family)
 }
 
-fn dscp_to_tos(dscp: u8) -> u8 {
-    (dscp & 0b111111) << 2
+fn get_socket_tos(socket: c_int, level: c_int, optname: c_int) -> Result<c_int, std::io::Error> {
+    let mut tos: c_int = 0;
+    let mut len: socklen_t = std::mem::size_of::<c_int>().try_into().unwrap();
+    let res = unsafe {
+        getsockopt(
+            socket,
+            level,
+            optname,
+            &mut tos as *mut c_int as *mut c_void,
+            &mut len as *mut socklen_t,
+        )
+    };
+    if res < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(tos)
+}
+
+fn dscp_to_tos(tos: u8, dscp: u8) -> u8 {
+    ((dscp & 0b111111) << 2) | (tos & 0b11)
 }
 
 fn get_dscp_class() -> u8 {
-    env::var("LIBDSCP_CLASS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0)
+    let env_var = env::var("LIBDSCP_CLASS");
+    match env_var {
+        Err(_) => {
+            if *IS_DEBUG {
+                eprintln!("libdscp: no LIBDSCP_CLASS found; defaulting to 0");
+            }
+            0
+        }
+        Ok(v) => {
+            let dscp = v.parse();
+            match dscp {
+                Err(_) => {
+                    eprintln!(
+                        "libdscp: failed to parse LIBDSCP_CLASS as a number; defaulting to 0"
+                    );
+                    0
+                }
+                Ok(dscp) => {
+                    if dscp > 63 {
+                        eprintln!("libdscp: provided LIBDSCP_CLASS exceeds 63; defaulting to 0");
+                        return 0;
+                    }
+                    dscp
+                }
+            }
+        }
+    }
 }
 
 fn get_debug() -> bool {
